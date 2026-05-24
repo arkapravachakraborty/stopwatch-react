@@ -1,0 +1,134 @@
+@import "tailwindcss";
+
+:root {
+  --sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --mono: 'Space Mono', monospace;
+  
+  --bg-primary: #faf9f6; /* Beautiful warm gallery white */
+  --bg-secondary: #ffffff;
+  --text-primary: #111111;
+  --text-secondary: #666666;
+  --text-tertiary: #999999;
+  
+  --accent: #ff4500; /* Energetic premium orange-red */
+  --accent-light: rgba(255, 69, 0, 0.08);
+  --accent-border: rgba(255, 69, 0, 0.25);
+  
+  --border-light: #eae9e5;
+  --border-focus: #111111;
+  
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.08);
+  
+  font-family: var(--sans);
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow-x: hidden;
+  background-color: var(--bg-primary);
+}
+
+/* Beautiful dot matrix background pattern */
+.dot-grid {
+  background-image: radial-gradient(rgba(17, 17, 17, 0.04) 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Glassmorphism card container */
+.stopwatch-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-lg);
+  border-radius: 32px;
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Keyframe animations */
+@keyframes sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-sweep {
+  animation: sweep 60s linear infinite;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+/* Monospace fonts for time tracking */
+.font-time {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.05em;
+}
+
+/* Custom scrollbars for a cleaner experience */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #e0deda;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #c5c3bd;
+}
+
+/* Smooth micro-interaction transitions */
+button, a {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#root {
+  width: 100%;
+  max-width: 1200px;
+  padding: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
