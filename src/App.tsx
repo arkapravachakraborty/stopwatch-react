@@ -76,30 +76,31 @@ function App() {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       
+      osc.type = 'triangle'; // Richer harmonics for classic watch beeps
       osc.connect(gain);
       gain.connect(ctx.destination);
       
       if (type === 'start') {
         osc.frequency.setValueAtTime(800, ctx.currentTime);
-        gain.gain.setValueAtTime(0.03, ctx.currentTime);
+        gain.gain.setValueAtTime(0.16, ctx.currentTime); // Prominent volume
         gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.08);
         osc.start(ctx.currentTime);
         osc.stop(ctx.currentTime + 0.08);
       } else if (type === 'stop') {
         osc.frequency.setValueAtTime(600, ctx.currentTime);
-        gain.gain.setValueAtTime(0.03, ctx.currentTime);
+        gain.gain.setValueAtTime(0.12, ctx.currentTime); // Clear feedback
         gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12);
         osc.start(ctx.currentTime);
         osc.stop(ctx.currentTime + 0.12);
       } else if (type === 'lap') {
         osc.frequency.setValueAtTime(950, ctx.currentTime);
-        gain.gain.setValueAtTime(0.025, ctx.currentTime);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime); // Crisp lap tick
         gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.06);
         osc.start(ctx.currentTime);
         osc.stop(ctx.currentTime + 0.06);
       } else if (type === 'reset') {
         osc.frequency.setValueAtTime(450, ctx.currentTime);
-        gain.gain.setValueAtTime(0.03, ctx.currentTime);
+        gain.gain.setValueAtTime(0.16, ctx.currentTime); // Bold reset sound
         gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.15);
         osc.start(ctx.currentTime);
         osc.stop(ctx.currentTime + 0.15);
@@ -124,6 +125,9 @@ function App() {
         const osc2 = ctx.createOscillator();
         const gain = ctx.createGain();
         
+        osc1.type = 'triangle';
+        osc2.type = 'triangle';
+        
         osc1.connect(gain);
         osc2.connect(gain);
         gain.connect(ctx.destination);
@@ -131,7 +135,7 @@ function App() {
         osc1.frequency.setValueAtTime(880, ctx.currentTime); 
         osc2.frequency.setValueAtTime(1100, ctx.currentTime); 
         
-        gain.gain.setValueAtTime(0.04, ctx.currentTime);
+        gain.gain.setValueAtTime(0.24, ctx.currentTime); // Prominent alarm alert chime
         gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
         
         osc1.start(ctx.currentTime);

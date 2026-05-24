@@ -1,50 +1,49 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="100%" height="100%">
   <defs>
-    <!-- Definition of gradients and casing finishes -->
-    <linearGradient id="orange-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#ff6a00" />
-      <stop offset="100%" stop-color="#ff4500" />
+    <!-- Rich orange gradient matching the Chronos theme -->
+    <linearGradient id="orange-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff7a22" />
+      <stop offset="100%" stop-color="#ff4100" />
     </linearGradient>
-    <linearGradient id="silver-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <!-- Soft white/silver gradient for physical crowns -->
+    <linearGradient id="white-grad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#ffffff" />
-      <stop offset="50%" stop-color="#f1f5f9" />
-      <stop offset="100%" stop-color="#cbd5e1" />
+      <stop offset="100%" stop-color="#f1f5f9" />
     </linearGradient>
   </defs>
 
+  <!-- Vibrant Orange background plate - pops beautifully in light and dark tabs -->
+  <rect width="128" height="128" rx="28" fill="url(#orange-grad)" />
+
   <!-- Stopwatch top pusher (crown) -->
-  <rect x="56" y="3" width="16" height="11" rx="2.5" fill="url(#silver-grad)" stroke="#1e293b" stroke-width="2.5" />
-  <rect x="61" y="10" width="6" height="5" fill="#475569" />
+  <rect x="56" y="12" width="16" height="9" rx="2" fill="url(#white-grad)" />
+  <rect x="61" y="21" width="6" height="4" fill="#ffffff" opacity="0.8" />
 
   <!-- Stopwatch top-right pusher -->
-  <g transform="rotate(45 64 64)">
-    <rect x="58" y="3" width="12" height="9" rx="2" fill="url(#silver-grad)" stroke="#1e293b" stroke-width="2.5" />
+  <g transform="rotate(45 64 70)">
+    <rect x="58" y="12" width="12" height="7" rx="1.5" fill="url(#white-grad)" />
   </g>
 
-  <!-- Stopwatch outer casing structure -->
-  <circle cx="64" cy="64" r="54" fill="#1e293b" />
-  <circle cx="64" cy="64" r="52" fill="url(#silver-grad)" stroke="#1e293b" stroke-width="3" />
+  <!-- Stopwatch outer white casing structure -->
+  <circle cx="64" cy="70" r="41" fill="none" stroke="#ffffff" stroke-width="4.5" />
 
-  <!-- Inner White Dial Face -->
-  <circle cx="64" cy="64" r="44" fill="#ffffff" stroke="#f1f5f9" stroke-width="1.5" />
+  <!-- Inner white dial face -->
+  <circle cx="64" cy="70" r="34" fill="#ffffff" />
   
-  <!-- Stylized Geometric "C" (representing Chronos) -->
-  <path d="M 64,28 A 36,36 0 1,0 93.3,81.5" fill="none" stroke="#18181b" stroke-width="7" stroke-linecap="round" />
+  <!-- Stylized Geometric "C" (for Chronos) in matching Orange -->
+  <path d="M 64,44 A 26,26 0 1,0 85.3,83.0" fill="none" stroke="#ff4500" stroke-width="6.5" stroke-linecap="round" />
 
-  <!-- Major Dial tick indicators -->
-  <line x1="64" y1="20" x2="64" y2="24" stroke="#18181b" stroke-width="2.5" stroke-linecap="round" />
-  <line x1="64" y1="108" x2="64" y2="104" stroke="#18181b" stroke-width="2.5" stroke-linecap="round" />
-  <line x1="20" y1="64" x2="24" y2="64" stroke="#18181b" stroke-width="2.5" stroke-linecap="round" />
-  <line x1="108" y1="64" x2="104" y2="64" stroke="#18181b" stroke-width="2.5" stroke-linecap="round" />
+  <!-- Dial tick indicators -->
+  <line x1="64" y1="38" x2="64" y2="41" stroke="#ff4500" stroke-width="2" stroke-linecap="round" />
+  <line x1="64" y1="102" x2="64" y2="99" stroke="#ff4500" stroke-width="2" stroke-linecap="round" />
+  <line x1="32" y1="70" x2="35" y2="70" stroke="#ff4500" stroke-width="2" stroke-linecap="round" />
+  <line x1="96" y1="70" x2="93" y2="70" stroke="#ff4500" stroke-width="2" stroke-linecap="round" />
 
-  <!-- Sweeping Needle Indicator in Chronos Orange -->
-  <g transform="rotate(135 64 64)">
-    <line x1="64" y1="64" x2="64" y2="76" stroke="url(#orange-grad)" stroke-width="2.5" stroke-linecap="round" />
-    <line x1="64" y1="64" x2="64" y2="28" stroke="url(#orange-grad)" stroke-width="3" stroke-linecap="round" />
-    <circle cx="64" cy="64" r="5.5" fill="#18181b" />
-    <circle cx="64" cy="64" r="1.8" fill="#ffffff" />
+  <!-- Sweeping needle in high-contrast carbon slate -->
+  <g transform="rotate(135 64 70)">
+    <line x1="64" y1="70" x2="64" y2="78" stroke="#1e293b" stroke-width="2" stroke-linecap="round" />
+    <line x1="64" y1="70" x2="64" y2="44" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round" />
+    <circle cx="64" cy="70" r="4.5" fill="#1e293b" />
+    <circle cx="64" cy="70" r="1.5" fill="#ffffff" />
   </g>
-
-  <!-- Glowing accent at 12 o'clock -->
-  <circle cx="64" cy="20" r="1.5" fill="#ff4500" />
 </svg>
