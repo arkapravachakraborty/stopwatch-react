@@ -304,7 +304,7 @@ function App() {
     setTimeLeft(msDuration);
   };
 
-  const handleLoadPreset = (ms: number, name: string) => {
+  const handleLoadPreset = (ms: number, _name: string) => {
     handlePauseTimer();
     stopAlarmSound();
     setIsAlarmActive(false);
