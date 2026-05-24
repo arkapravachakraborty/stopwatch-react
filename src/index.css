@@ -125,10 +125,16 @@ button, a {
 #root {
   width: 100%;
   max-width: 1200px;
-  padding: 24px;
+  padding: 12px;
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
   box-sizing: border-box;
+}
+
+@media (min-width: 640px) {
+  #root {
+    padding: 24px;
+  }
 }

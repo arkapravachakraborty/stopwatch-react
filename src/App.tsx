@@ -17,6 +17,17 @@ function App() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
 
+  const timeRef = useRef<number>(0);
+  const isRunningRef = useRef<boolean>(false);
+  const lapsRef = useRef<Lap[]>([]);
+  const soundEnabledRef = useRef<boolean>(true);
+
+  // Sync state values with refs to completely eliminate stale closures in high-frequency event loops
+  useEffect(() => { timeRef.current = time; }, [time]);
+  useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
+  useEffect(() => { lapsRef.current = laps; }, [laps]);
+  useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
+
   // Synthesize digital stopwatch sound effects using Web Audio API
   const playBeep = (type: 'start' | 'stop' | 'lap' | 'reset') => {
     try {
@@ -65,12 +76,12 @@ function App() {
   };
 
   const handleStart = () => {
-    if (isRunning) return;
+    if (isRunningRef.current) return;
 
     setIsRunning(true);
-    if (soundEnabled) playBeep('start');
+    if (soundEnabledRef.current) playBeep('start');
 
-    startTimeRef.current = Date.now() - time;
+    startTimeRef.current = Date.now() - timeRef.current;
 
     intervalRef.current = setInterval(() => {
       setTime(Date.now() - startTimeRef.current);
@@ -78,10 +89,10 @@ function App() {
   };
 
   const handlePause = () => {
-    if (!isRunning) return;
+    if (!isRunningRef.current) return;
 
     setIsRunning(false);
-    if (soundEnabled) playBeep('stop');
+    if (soundEnabledRef.current) playBeep('stop');
 
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -91,7 +102,7 @@ function App() {
 
   const handleReset = () => {
     setIsRunning(false);
-    if (soundEnabled) playBeep('reset');
+    if (soundEnabledRef.current) playBeep('reset');
 
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -103,30 +114,28 @@ function App() {
   };
 
   const handleLap = () => {
-    if (!isRunning) return;
+    if (!isRunningRef.current) return;
     
-    if (soundEnabled) playBeep('lap');
+    if (soundEnabledRef.current) playBeep('lap');
     
-    setTime((currentLatestTime) => {
-      setLaps((prevLaps) => {
-        const prevLapTime = prevLaps.length > 0 ? prevLaps[prevLaps.length - 1].lapTime : 0;
-        const splitTime = currentLatestTime - prevLapTime;
-        const newLap: Lap = {
-          id: prevLaps.length + 1,
-          lapTime: currentLatestTime,
-          splitTime: splitTime
-        };
-        return [...prevLaps, newLap];
-      });
-      return currentLatestTime;
+    const currentLatestTime = timeRef.current;
+    
+    setLaps((prevLaps) => {
+      const prevLapTime = prevLaps.length > 0 ? prevLaps[prevLaps.length - 1].lapTime : 0;
+      const splitTime = currentLatestTime - prevLapTime;
+      const newLap: Lap = {
+        id: prevLaps.length + 1,
+        lapTime: currentLatestTime,
+        splitTime: splitTime
+      };
+      return [...prevLaps, newLap];
     });
   };
 
   const handleDeleteLap = (idToDelete: number) => {
-    if (soundEnabled) playBeep('stop');
+    if (soundEnabledRef.current) playBeep('stop');
     setLaps((prevLaps) => {
       const filteredLaps = prevLaps.filter((lap) => lap.id !== idToDelete);
-      // Re-map indices to preserve sequential lap numbering
       return filteredLaps.map((lap, index) => ({
         ...lap,
         id: index + 1,
@@ -136,22 +145,21 @@ function App() {
   };
 
   const handleClearAllLaps = () => {
-    if (soundEnabled) playBeep('reset');
+    if (soundEnabledRef.current) playBeep('reset');
     setLaps([]);
   };
 
   const handleToggleStartPause = () => {
-    if (isRunning) {
+    if (isRunningRef.current) {
       handlePause();
     } else {
       handleStart();
     }
   };
 
-  // Set up global keyboard shortcuts
+  // Set up global keyboard shortcuts - bound once for optimum performance and zero closure lag
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Prevent keyboard triggers when user is writing text elsewhere (not applicable here, but good practice)
       if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
         return;
       }
@@ -159,11 +167,15 @@ function App() {
       switch (e.code) {
         case 'Space':
           e.preventDefault(); // Stop page scroll
-          handleToggleStartPause();
+          if (isRunningRef.current) {
+            handlePause();
+          } else {
+            handleStart();
+          }
           break;
         case 'KeyL':
           e.preventDefault();
-          if (isRunning) {
+          if (isRunningRef.current) {
             handleLap();
           }
           break;
@@ -185,7 +197,7 @@ function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isRunning, time, soundEnabled]);
+  }, []);
 
   // Clean up timer interval on unmount
   useEffect(() => {
@@ -299,7 +311,7 @@ function App() {
 
       <div className="w-full max-w-4xl stopwatch-card overflow-hidden">
         {/* Card Header & Custom Controls */}
-        <div className="flex items-center justify-between px-8 py-5 border-b border-zinc-100 bg-white/70 backdrop-blur-sm">
+        <div className="flex items-center justify-between px-4 py-4 sm:px-8 sm:py-5 border-b border-zinc-100 bg-white/70 backdrop-blur-sm">
           <div className="flex items-center gap-2.5">
             <div className="w-2.5 h-2.5 rounded-full bg-[#ff4500]"></div>
             <span className="font-sans text-[11px] tracking-[0.3em] font-bold text-zinc-900 uppercase">
@@ -378,10 +390,10 @@ function App() {
         <div className="grid grid-cols-1 lg:grid-cols-12 bg-white">
           
           {/* LEFT PANEL: Dial & Main Actions */}
-          <div className="lg:col-span-7 flex flex-col items-center justify-center p-8 md:p-12 border-b lg:border-b-0 lg:border-r border-zinc-100">
+          <div className="lg:col-span-7 flex flex-col items-center justify-center p-4 py-8 sm:p-8 md:p-12 border-b lg:border-b-0 lg:border-r border-zinc-100">
             
             {/* Visual Watch Face */}
-            <div className="relative flex items-center justify-center w-64 h-64 md:w-72 md:h-72 mb-10">
+            <div className="relative flex items-center justify-center w-[230px] h-[230px] min-[370px]:w-64 min-[370px]:h-64 sm:w-72 sm:h-72 mb-10">
               
               {/* Outer dial ring shadow */}
               <div className="absolute inset-0 rounded-full border border-zinc-100/80 shadow-md bg-zinc-50/10"></div>
@@ -442,15 +454,15 @@ function App() {
                 <div className="flex items-baseline font-time mt-1.5">
                   {hasHours && (
                     <>
-                      <span className="text-3xl font-semibold text-zinc-900 leading-none">{hours}</span>
-                      <span className="text-2xl font-semibold text-zinc-300 mx-0.5 leading-none">:</span>
+                      <span className="text-2xl min-[370px]:text-3xl font-semibold text-zinc-900 leading-none">{hours}</span>
+                      <span className="text-xl min-[370px]:text-2xl font-semibold text-zinc-300 mx-0.5 leading-none">:</span>
                     </>
                   )}
-                  <span className="text-4xl md:text-5xl font-semibold text-zinc-900 leading-none">{minutes}</span>
-                  <span className="text-3xl md:text-4xl font-semibold text-zinc-300 mx-0.5 leading-none">:</span>
-                  <span className="text-4xl md:text-5xl font-semibold text-zinc-900 leading-none">{seconds}</span>
-                  <span className="text-2xl md:text-3xl font-semibold text-zinc-300 leading-none">.</span>
-                  <span className="text-2xl md:text-3xl font-bold text-[#ff4500] leading-none">{centiseconds}</span>
+                  <span className="text-3xl min-[370px]:text-4xl sm:text-5xl font-semibold text-zinc-900 leading-none">{minutes}</span>
+                  <span className="text-2xl min-[370px]:text-3xl sm:text-4xl font-semibold text-zinc-300 mx-0.5 leading-none">:</span>
+                  <span className="text-3xl min-[370px]:text-4xl sm:text-5xl font-semibold text-zinc-900 leading-none">{seconds}</span>
+                  <span className="text-xl min-[370px]:text-2xl sm:text-3xl font-semibold text-zinc-300 leading-none">.</span>
+                  <span className="text-xl min-[370px]:text-2xl sm:text-3xl font-bold text-[#ff4500] leading-none">{centiseconds}</span>
                 </div>
 
                 <span className="text-[10px] text-zinc-400 font-semibold mt-2 tracking-wider uppercase font-sans">
@@ -460,28 +472,28 @@ function App() {
             </div>
 
             {/* Premium Button Action Controls */}
-            <div className="w-full max-w-sm flex items-center justify-between gap-4">
+            <div className="w-full max-w-sm flex items-center justify-between gap-2 sm:gap-4">
               
               {/* Reset Button */}
               <button
                 onClick={handleReset}
                 disabled={time === 0}
-                className={`flex-1 py-3 px-4 rounded-2xl font-sans text-sm font-semibold flex items-center justify-center gap-2 border shadow-sm transition-all duration-200 cursor-pointer ${
+                className={`flex-1 py-3 px-3 sm:px-4 rounded-2xl font-sans text-sm font-semibold flex items-center justify-center gap-1.5 sm:gap-2 border shadow-sm transition-all duration-200 cursor-pointer ${
                   time > 0
                     ? 'bg-white hover:bg-zinc-50 border-zinc-200 text-zinc-700 active:scale-95'
                     : 'bg-zinc-50/50 text-zinc-300 border-zinc-100 cursor-not-allowed'
                 }`}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                 </svg>
-                <span>Reset</span>
+                <span className="hidden sm:inline">Reset</span>
               </button>
 
               {/* Start / Pause Button */}
               <button
                 onClick={handleToggleStartPause}
-                className={`flex-[1.5] py-3.5 px-6 rounded-2xl font-sans text-sm font-bold flex items-center justify-center gap-2.5 transition-all duration-200 shadow-md cursor-pointer hover:shadow-lg active:scale-95 ${
+                className={`flex-[1.5] py-3 px-4 sm:px-6 rounded-2xl font-sans text-sm font-bold flex items-center justify-center gap-1.5 sm:gap-2.5 transition-all duration-200 shadow-md cursor-pointer hover:shadow-lg active:scale-95 ${
                   isRunning
                     ? 'bg-[#ff4500] hover:bg-[#e03d00] text-white hover:shadow-orange-100'
                     : 'bg-zinc-950 hover:bg-zinc-900 text-white hover:shadow-zinc-200'
@@ -489,7 +501,7 @@ function App() {
               >
                 {isRunning ? (
                   <>
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24">
                       <rect x="6" y="4" width="4" height="16" rx="1" />
                       <rect x="14" y="4" width="4" height="16" rx="1" />
                     </svg>
@@ -497,7 +509,7 @@ function App() {
                   </>
                 ) : (
                   <>
-                    <svg className="w-4 h-4 fill-white" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 fill-white shrink-0" viewBox="0 0 24 24">
                       <path d="M8 5v14l11-7z" />
                     </svg>
                     <span>Start</span>
@@ -509,23 +521,23 @@ function App() {
               <button
                 onClick={handleLap}
                 disabled={!isRunning}
-                className={`flex-1 py-3 px-4 rounded-2xl font-sans text-sm font-semibold flex items-center justify-center gap-2 border shadow-sm transition-all duration-200 cursor-pointer ${
+                className={`flex-1 py-3 px-3 sm:px-4 rounded-2xl font-sans text-sm font-semibold flex items-center justify-center gap-1.5 sm:gap-2 border shadow-sm transition-all duration-200 cursor-pointer ${
                   isRunning
                     ? 'bg-white hover:bg-zinc-50 border-zinc-200 text-zinc-700 active:scale-95'
                     : 'bg-zinc-50/50 text-zinc-300 border-zinc-100 cursor-not-allowed'
                 }`}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-6.005-12.283A48.474 48.474 0 006 4.5H3.5A2.5 2.5 0 001 7v5a2.5 2.5 0 002.5 2.5H3" />
                 </svg>
-                <span>Lap</span>
+                <span className="hidden sm:inline">Lap</span>
               </button>
 
             </div>
           </div>
 
           {/* RIGHT PANEL: Lap lists & statistics */}
-          <div className="lg:col-span-5 flex flex-col bg-zinc-50/40 p-6 md:p-8 justify-between">
+          <div className="lg:col-span-5 flex flex-col bg-zinc-50/40 p-4 sm:p-6 md:p-8 justify-between">
             
             {/* Laps List Header with Statistics */}
             <div>
