@@ -8,27 +8,61 @@ interface Lap {
 }
 
 function App() {
-  const [time, setTime] = useState<number>(0);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [laps, setLaps] = useState<Lap[]>([]);
+  // Navigation tab switcher state
+  const [activeTab, setActiveTab] = useState<'stopwatch' | 'timer'>('stopwatch');
+
+  // Global settings
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [showShortcuts, setShowShortcuts] = useState<boolean>(false);
 
+  // ==========================================
+  // STOPWATCH CORE STATES
+  // ==========================================
+  const [time, setTime] = useState<number>(0);
+  const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [laps, setLaps] = useState<Lap[]>([]);
+
+  // ==========================================
+  // TIMER CORE STATES
+  // ==========================================
+  const [timerHours, setTimerHours] = useState<number>(0);
+  const [timerMinutes, setTimerMinutes] = useState<number>(5); // default to 5 min
+  const [timerSeconds, setTimerSeconds] = useState<number>(0);
+  const [timerDuration, setTimerDuration] = useState<number>(300000); // default 5 min in ms
+  const [timeLeft, setTimeLeft] = useState<number>(300000);
+  const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
+  const [isAlarmActive, setIsAlarmActive] = useState<boolean>(false);
+
+  // Refs for event interval and target tracking
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
+  const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Refs to completely eliminate stale closures in high-frequency event listeners
   const timeRef = useRef<number>(0);
   const isRunningRef = useRef<boolean>(false);
   const lapsRef = useRef<Lap[]>([]);
   const soundEnabledRef = useRef<boolean>(true);
+  const activeTabRef = useRef<'stopwatch' | 'timer'>('stopwatch');
 
-  // Sync state values with refs to completely eliminate stale closures in high-frequency event loops
+  const timeLeftRef = useRef<number>(300000);
+  const isTimerRunningRef = useRef<boolean>(false);
+  const timerDurationRef = useRef<number>(300000);
+
+  // Sync state values with their respective refs
   useEffect(() => { timeRef.current = time; }, [time]);
   useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
   useEffect(() => { lapsRef.current = laps; }, [laps]);
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
-  // Synthesize digital stopwatch sound effects using Web Audio API
+  useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
+  useEffect(() => { isTimerRunningRef.current = isTimerRunning; }, [isTimerRunning]);
+  useEffect(() => { timerDurationRef.current = timerDuration; }, [timerDuration]);
+
+  // ==========================================
+  // SYNTHESIZED SOUND EFFECTS
+  // ==========================================
   const playBeep = (type: 'start' | 'stop' | 'lap' | 'reset') => {
     try {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -75,6 +109,51 @@ function App() {
     }
   };
 
+  const triggerAlarmSound = () => {
+    if (!soundEnabledRef.current) return;
+    
+    // Repeating alarm pattern
+    alarmIntervalRef.current = setInterval(() => {
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextClass) return;
+        const ctx = new AudioContextClass();
+        if (ctx.state === 'suspended') ctx.resume();
+        
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc1.frequency.setValueAtTime(880, ctx.currentTime); 
+        osc2.frequency.setValueAtTime(1100, ctx.currentTime); 
+        
+        gain.gain.setValueAtTime(0.04, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+        
+        osc1.start(ctx.currentTime);
+        osc2.start(ctx.currentTime);
+        osc1.stop(ctx.currentTime + 0.35);
+        osc2.stop(ctx.currentTime + 0.35);
+      } catch (e) {
+        console.warn(e);
+      }
+    }, 750);
+  };
+
+  const stopAlarmSound = () => {
+    if (alarmIntervalRef.current) {
+      clearInterval(alarmIntervalRef.current);
+      alarmIntervalRef.current = null;
+    }
+  };
+
+  // ==========================================
+  // ACTION EVENT HANDLERS
+  // ==========================================
   const handleStart = () => {
     if (isRunningRef.current) return;
 
@@ -149,15 +228,108 @@ function App() {
     setLaps([]);
   };
 
-  const handleToggleStartPause = () => {
-    if (isRunningRef.current) {
-      handlePause();
-    } else {
-      handleStart();
+  // ==========================================
+  // TIMER ACTION ENGINE
+  // ==========================================
+  const handleStartTimer = () => {
+    if (isTimerRunningRef.current) return;
+    if (timeLeftRef.current <= 0) return; // Prevent starting finished timers
+
+    setIsTimerRunning(true);
+    if (soundEnabledRef.current) playBeep('start');
+
+    startTimeRef.current = Date.now() + timeLeftRef.current;
+
+    intervalRef.current = setInterval(() => {
+      const remaining = startTimeRef.current - Date.now();
+      if (remaining <= 0) {
+        // Countdown Completed
+        setTimeLeft(0);
+        setIsTimerRunning(false);
+        setIsAlarmActive(true);
+        triggerAlarmSound();
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      } else {
+        setTimeLeft(remaining);
+      }
+    }, 10);
+  };
+
+  const handlePauseTimer = () => {
+    if (!isTimerRunningRef.current) return;
+
+    setIsTimerRunning(false);
+    if (soundEnabledRef.current) playBeep('stop');
+
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
   };
 
-  // Set up global keyboard shortcuts - bound once for optimum performance and zero closure lag
+  const handleResetTimer = () => {
+    setIsTimerRunning(false);
+    setIsAlarmActive(false);
+    stopAlarmSound();
+    
+    if (soundEnabledRef.current) playBeep('reset');
+    
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    
+    setTimeLeft(timerDurationRef.current);
+  };
+
+  const handleDurationChange = (h: number, m: number, s: number) => {
+    // Sanitize values between boundaries
+    const hrs = Math.max(0, Math.min(23, h));
+    const mins = Math.max(0, Math.min(59, m));
+    const secs = Math.max(0, Math.min(59, s));
+
+    setTimerHours(hrs);
+    setTimerMinutes(mins);
+    setTimerSeconds(secs);
+
+    const msDuration = (hrs * 3600 + mins * 60 + secs) * 1000;
+    setTimerDuration(msDuration);
+    setTimeLeft(msDuration);
+  };
+
+  const handleLoadPreset = (ms: number, name: string) => {
+    handlePauseTimer();
+    stopAlarmSound();
+    setIsAlarmActive(false);
+
+    const totalSeconds = Math.floor(ms / 1000);
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+
+    handleDurationChange(hrs, mins, secs);
+    if (soundEnabledRef.current) playBeep('lap');
+  };
+
+  // Switch modes safely and pause active loops
+  const handleTabChange = (newTab: 'stopwatch' | 'timer') => {
+    if (newTab === activeTab) return;
+    
+    // Pause counting sequences during switcher transition
+    handlePause();
+    handlePauseTimer();
+    stopAlarmSound();
+    setIsAlarmActive(false);
+
+    setActiveTab(newTab);
+  };
+
+  // ==========================================
+  // KEYBOARD CONTROLS LEGEND
+  // ==========================================
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
@@ -166,27 +338,43 @@ function App() {
       
       switch (e.code) {
         case 'Space':
-          e.preventDefault(); // Stop page scroll
-          if (isRunningRef.current) {
-            handlePause();
+          e.preventDefault(); // Stop window scrolling
+          if (activeTabRef.current === 'stopwatch') {
+            if (isRunningRef.current) {
+              handlePause();
+            } else {
+              handleStart();
+            }
           } else {
-            handleStart();
+            if (isTimerRunningRef.current) {
+              handlePauseTimer();
+            } else {
+              handleStartTimer();
+            }
           }
           break;
         case 'KeyL':
           e.preventDefault();
-          if (isRunningRef.current) {
+          if (activeTabRef.current === 'stopwatch' && isRunningRef.current) {
             handleLap();
           }
           break;
         case 'KeyR':
           e.preventDefault();
-          handleReset();
+          if (activeTabRef.current === 'stopwatch') {
+            handleReset();
+          } else {
+            handleResetTimer();
+          }
           break;
         case 'Escape':
         case 'KeyC':
           e.preventDefault();
-          handleClearAllLaps();
+          if (activeTabRef.current === 'stopwatch') {
+            handleClearAllLaps();
+          } else {
+            handleResetTimer();
+          }
           break;
         default:
           break;
@@ -199,16 +387,17 @@ function App() {
     };
   }, []);
 
-  // Clean up timer interval on unmount
+  // Cleanup active intervals on unmount
   useEffect(() => {
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      stopAlarmSound();
     };
   }, []);
 
-  // Time formatter helper
+  // ==========================================
+  // FORMATTERS & ANALYTICS
+  // ==========================================
   const formatTimeComponents = (ms: number) => {
     const totalMs = Math.floor(ms);
     const centiseconds = Math.floor((totalMs % 1000) / 10);
@@ -259,7 +448,6 @@ function App() {
       }
     });
 
-    // If only 1 lap exists, we don't highlight fastest/slowest as it's the same
     const finalFastest = laps.length >= 2 ? fastestId : -1;
     const finalSlowest = laps.length >= 2 ? slowestId : -1;
 
@@ -272,10 +460,9 @@ function App() {
 
   const { fastestId, slowestId, average } = getLapStats();
 
-  // Mechanical Dial Calculations
-  const secondsRotation = ((time % 60000) / 60000) * 360;
-  
-  // Compute dial tick lines
+  // ==========================================
+  // DIAL COORDINATE PLOTTING
+  // ==========================================
   const renderDialTicks = () => {
     const ticks = [];
     for (let i = 0; i < 60; i++) {
@@ -297,20 +484,39 @@ function App() {
     return ticks;
   };
 
-  // Determine indicator position coordinates on dial
-  const theta = (secondsRotation - 90) * (Math.PI / 180);
+  // Gauge needle rotations
+  const secondsRotation = ((time % 60000) / 60000) * 360;
+  
+  // Backwards needle sweep indicating countdown depletion
+  const timerSecondsRotation = timerDuration > 0 
+    ? -((timeLeft % 60000) / 60000) * 360 
+    : 360;
+
+  // Active Dial Trigonometric needle-dot positioning
+  const dialRotation = activeTab === 'stopwatch' ? secondsRotation : -timerSecondsRotation;
+  const theta = (dialRotation - 90) * (Math.PI / 180);
   const dotX = 100 + 86 * Math.cos(theta);
   const dotY = 100 + 86 * Math.sin(theta);
 
-  const { hours, minutes, seconds, centiseconds, hasHours } = formatTimeComponents(time);
+  // Time segment formatting variables
+  const stopwatchTime = formatTimeComponents(time);
+  const countdownTime = formatTimeComponents(timeLeft);
+
+  // Timer custom presets list
+  const timerPresets = [
+    { name: 'Pomodoro Focus', duration: 1500000, description: '25-minute extreme focus cycle', tag: 'WORK' },
+    { name: 'Short Break', duration: 300000, description: '5-minute standard resting block', tag: 'REST' },
+    { name: 'Long Break', duration: 900000, description: '15-minute mental decompression', tag: 'REST' },
+    { name: 'Power Nap', duration: 1200000, description: '20-minute rapid recovery nap', tag: 'RECOVER' },
+    { name: 'Centering Meditation', duration: 600000, description: '10-minute mindful breathing', tag: 'BREATHE' }
+  ];
 
   return (
     <>
-      {/* Background decoration grid */}
       <div className="dot-grid"></div>
 
       <div className="w-full max-w-4xl stopwatch-card overflow-hidden">
-        {/* Card Header & Custom Controls */}
+        {/* Card Header */}
         <div className="flex items-center justify-between px-4 py-4 sm:px-8 sm:py-5 border-b border-zinc-100 bg-white/70 backdrop-blur-sm">
           <div className="flex items-center gap-2.5">
             <div className="w-2.5 h-2.5 rounded-full bg-[#ff4500]"></div>
@@ -320,7 +526,7 @@ function App() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Keyboard Shortcuts Trigger */}
+            {/* Keyboard shortcuts helper */}
             <button
               onClick={() => setShowShortcuts(!showShortcuts)}
               className={`p-2 rounded-xl border transition-all duration-200 cursor-pointer ${
@@ -336,7 +542,7 @@ function App() {
               </svg>
             </button>
 
-            {/* Sound Effects Toggle */}
+            {/* Speaker Sound controls */}
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
               className={`p-2 rounded-xl border transition-all duration-200 cursor-pointer ${
@@ -359,7 +565,7 @@ function App() {
           </div>
         </div>
 
-        {/* Shortcuts Slide-down Panel */}
+        {/* Shortcuts Helper Drawer */}
         {showShortcuts && (
           <div className="px-8 py-4 bg-zinc-50 border-b border-zinc-100 flex flex-wrap gap-4 text-xs text-zinc-600 justify-between items-center transition-all duration-300">
             <span className="font-semibold text-zinc-800">Quick Keyboard Controls:</span>
@@ -367,14 +573,16 @@ function App() {
               <span className="flex items-center gap-1.5">
                 <kbd className="px-2 py-0.5 bg-white border border-zinc-200 rounded text-[10px] font-mono shadow-xs text-zinc-800">Space</kbd> Start / Pause
               </span>
+              {activeTab === 'stopwatch' ? (
+                <span className="flex items-center gap-1.5">
+                  <kbd className="px-2 py-0.5 bg-white border border-zinc-200 rounded text-[10px] font-mono shadow-xs text-zinc-800">L</kbd> Record Lap
+                </span>
+              ) : null}
               <span className="flex items-center gap-1.5">
-                <kbd className="px-2 py-0.5 bg-white border border-zinc-200 rounded text-[10px] font-mono shadow-xs text-zinc-800">L</kbd> Record Lap
+                <kbd className="px-2 py-0.5 bg-white border border-zinc-200 rounded text-[10px] font-mono shadow-xs text-zinc-800">R</kbd> Reset Timer
               </span>
               <span className="flex items-center gap-1.5">
-                <kbd className="px-2 py-0.5 bg-white border border-zinc-200 rounded text-[10px] font-mono shadow-xs text-zinc-800">R</kbd> Reset Watch
-              </span>
-              <span className="flex items-center gap-1.5">
-                <kbd className="px-2 py-0.5 bg-white border border-zinc-200 rounded text-[10px] font-mono shadow-xs text-zinc-800">Esc</kbd> Clear Laps
+                <kbd className="px-2 py-0.5 bg-white border border-zinc-200 rounded text-[10px] font-mono shadow-xs text-zinc-800">Esc</kbd> Clear History
               </span>
             </div>
             <button
@@ -386,302 +594,596 @@ function App() {
           </div>
         )}
 
-        {/* Core Layout Split Section */}
+        {/* Layout Split Containers */}
         <div className="grid grid-cols-1 lg:grid-cols-12 bg-white">
           
-          {/* LEFT PANEL: Dial & Main Actions */}
+          {/* LEFT COLUMN: Gauges & Actions */}
           <div className="lg:col-span-7 flex flex-col items-center justify-center p-4 py-8 sm:p-8 md:p-12 border-b lg:border-b-0 lg:border-r border-zinc-100">
             
-            {/* Visual Watch Face */}
+            {/* Minimal tab controller */}
+            <div className="flex bg-zinc-100/80 p-1 rounded-2xl gap-1 mb-8 self-center shadow-inner">
+              <button
+                onClick={() => handleTabChange('stopwatch')}
+                className={`px-5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer ${
+                  activeTab === 'stopwatch'
+                    ? 'bg-white text-zinc-900 shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-800'
+                }`}
+              >
+                Stopwatch
+              </button>
+              <button
+                onClick={() => handleTabChange('timer')}
+                className={`px-5 py-1.5 rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer ${
+                  activeTab === 'timer'
+                    ? 'bg-white text-zinc-900 shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-800'
+                }`}
+              >
+                Timer
+              </button>
+            </div>
+
+            {/* Circular Gauge Frame */}
             <div className="relative flex items-center justify-center w-[230px] h-[230px] min-[370px]:w-64 min-[370px]:h-64 sm:w-72 sm:h-72 mb-10">
-              
-              {/* Outer dial ring shadow */}
+              {/* Soft visual shadows */}
               <div className="absolute inset-0 rounded-full border border-zinc-100/80 shadow-md bg-zinc-50/10"></div>
-              
-              {/* Sweeping progress glow ring */}
               <div className="absolute inset-4 rounded-full bg-white shadow-xl shadow-zinc-100"></div>
 
-              {/* Watch SVG Dial */}
+              {/* Vector SVG dial dial notches */}
               <svg className="absolute inset-0 w-full h-full p-2" viewBox="0 0 200 200">
-                {/* Dial Tracks */}
                 <circle cx="100" cy="100" r="92" fill="none" stroke="#f4f4f5" strokeWidth="1" />
                 <circle cx="100" cy="100" r="86" fill="none" stroke="#eae8e2" strokeWidth="0.5" strokeDasharray="2 3" />
                 
-                {/* Colorful Sweeping Track (Seconds Loop) */}
-                <circle
-                  cx="100"
-                  cy="100"
-                  r="86"
-                  fill="none"
-                  stroke="var(--accent)"
-                  strokeWidth="2"
-                  strokeDasharray={2 * Math.PI * 86}
-                  strokeDashoffset={2 * Math.PI * 86 - (2 * Math.PI * 86 * (time % 60000)) / 60000}
-                  strokeLinecap="round"
-                  transform="rotate(-90 100 100)"
-                  className="opacity-15"
-                />
+                {/* Active progress ring sweep */}
+                {activeTab === 'stopwatch' ? (
+                  <circle
+                    cx="100"
+                    cy="100"
+                    r="86"
+                    fill="none"
+                    stroke="var(--accent)"
+                    strokeWidth="2"
+                    strokeDasharray={2 * Math.PI * 86}
+                    strokeDashoffset={2 * Math.PI * 86 - (2 * Math.PI * 86 * (time % 60000)) / 60000}
+                    strokeLinecap="round"
+                    transform="rotate(-90 100 100)"
+                    className="opacity-15"
+                  />
+                ) : (
+                  <circle
+                    cx="100"
+                    cy="100"
+                    r="86"
+                    fill="none"
+                    stroke="var(--accent)"
+                    strokeWidth="2.5"
+                    strokeDasharray={2 * Math.PI * 86}
+                    strokeDashoffset={2 * Math.PI * 86 - (2 * Math.PI * 86 * (timeLeft / (timerDuration || 1)))}
+                    strokeLinecap="round"
+                    transform="rotate(-90 100 100)"
+                    className="opacity-20 transition-all duration-100"
+                  />
+                )}
 
-                {/* Dial Ticks */}
+                {/* ticks */}
                 {renderDialTicks()}
 
-                {/* 15s intervals text marks */}
                 <text x="100" y="27" textAnchor="middle" fontSize="8" fontWeight="700" fill="#18181b" className="font-sans tracking-wide">60</text>
                 <text x="175" y="103" textAnchor="middle" fontSize="8" fontWeight="700" fill="#18181b" className="font-sans tracking-wide">15</text>
                 <text x="100" y="179" textAnchor="middle" fontSize="8" fontWeight="700" fill="#18181b" className="font-sans tracking-wide">30</text>
                 <text x="26" y="103" textAnchor="middle" fontSize="8" fontWeight="700" fill="#18181b" className="font-sans tracking-wide">45</text>
 
-                {/* Sweeping Needle Dial indicator */}
-                <g transform={`rotate(${secondsRotation} 100 100)`}>
-                  <line x1="100" y1="100" x2="100" y2="114" stroke="var(--accent)" strokeWidth="1.25" strokeLinecap="round" className="opacity-80" />
-                  <line x1="100" y1="100" x2="100" y2="22" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" />
-                  <circle cx="100" cy="100" r="3.5" fill="var(--accent)" />
-                  <circle cx="100" cy="100" r="1.2" fill="#ffffff" />
-                </g>
+                {/* Sweeping Hands */}
+                {(!isAlarmActive && (activeTab === 'stopwatch' || timeLeft < timerDuration)) && (
+                  <g transform={`rotate(${activeTab === 'stopwatch' ? secondsRotation : -timerSecondsRotation} 100 100)`}>
+                    <line x1="100" y1="100" x2="100" y2="114" stroke="var(--accent)" strokeWidth="1.25" strokeLinecap="round" className="opacity-80" />
+                    <line x1="100" y1="100" x2="100" y2="22" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" />
+                    <circle cx="100" cy="100" r="3.5" fill="var(--accent)" />
+                    <circle cx="100" cy="100" r="1.2" fill="#ffffff" />
+                  </g>
+                )}
 
-                {/* Sweeping outer track tip dot */}
-                <circle cx={dotX} cy={dotY} r="3" fill="var(--accent)" className="shadow-xs" />
+                {/* Glowing coordinate tip point */}
+                {(!isAlarmActive && (activeTab === 'stopwatch' || timeLeft < timerDuration)) && (
+                  <circle cx={dotX} cy={dotY} r="3" fill="var(--accent)" className="shadow-xs" />
+                )}
               </svg>
 
-              {/* Digital Readout absolute centerpiece */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-2">
-                <span className={`text-[10px] tracking-[0.25em] font-bold transition-all duration-300 ${
-                  isRunning ? 'text-[#ff4500] animate-pulse' : 'text-zinc-400'
-                }`}>
-                  {isRunning ? 'RUNNING' : time > 0 ? 'PAUSED' : 'READY'}
-                </span>
-                
-                <div className="flex items-baseline font-time mt-1.5">
-                  {hasHours && (
-                    <>
-                      <span className="text-2xl min-[370px]:text-3xl font-semibold text-zinc-900 leading-none">{hours}</span>
-                      <span className="text-xl min-[370px]:text-2xl font-semibold text-zinc-300 mx-0.5 leading-none">:</span>
-                    </>
-                  )}
-                  <span className="text-3xl min-[370px]:text-4xl sm:text-5xl font-semibold text-zinc-900 leading-none">{minutes}</span>
-                  <span className="text-2xl min-[370px]:text-3xl sm:text-4xl font-semibold text-zinc-300 mx-0.5 leading-none">:</span>
-                  <span className="text-3xl min-[370px]:text-4xl sm:text-5xl font-semibold text-zinc-900 leading-none">{seconds}</span>
-                  <span className="text-xl min-[370px]:text-2xl sm:text-3xl font-semibold text-zinc-300 leading-none">.</span>
-                  <span className="text-xl min-[370px]:text-2xl sm:text-3xl font-bold text-[#ff4500] leading-none">{centiseconds}</span>
-                </div>
+              {/* CENTERPIECE DIGITAL READOUTS */}
+              
+              {/* Case 1: Stopwatch Mode Display */}
+              {activeTab === 'stopwatch' && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-2">
+                  <span className={`text-[10px] tracking-[0.25em] font-bold transition-all duration-300 ${
+                    isRunning ? 'text-[#ff4500] animate-pulse' : 'text-zinc-400'
+                  }`}>
+                    {isRunning ? 'RUNNING' : time > 0 ? 'PAUSED' : 'READY'}
+                  </span>
+                  
+                  <div className="flex items-baseline font-time mt-1.5">
+                    {stopwatchTime.hasHours && (
+                      <>
+                        <span className="text-2xl min-[370px]:text-3xl font-semibold text-zinc-900 leading-none">{stopwatchTime.hours}</span>
+                        <span className="text-xl min-[370px]:text-2xl font-semibold text-zinc-300 mx-0.5 leading-none">:</span>
+                      </>
+                    )}
+                    <span className="text-3xl min-[370px]:text-4xl sm:text-5xl font-semibold text-zinc-900 leading-none">{stopwatchTime.minutes}</span>
+                    <span className="text-2xl min-[370px]:text-3xl sm:text-4xl font-semibold text-zinc-300 mx-0.5 leading-none">:</span>
+                    <span className="text-3xl min-[370px]:text-4xl sm:text-5xl font-semibold text-zinc-900 leading-none">{stopwatchTime.seconds}</span>
+                    <span className="text-xl min-[370px]:text-2xl sm:text-3xl font-semibold text-zinc-300 leading-none">.</span>
+                    <span className="text-xl min-[370px]:text-2xl sm:text-3xl font-bold text-[#ff4500] leading-none">{stopwatchTime.centiseconds}</span>
+                  </div>
 
-                <span className="text-[10px] text-zinc-400 font-semibold mt-2 tracking-wider uppercase font-sans">
-                  {laps.length} {laps.length === 1 ? 'Lap' : 'Laps'}
-                </span>
-              </div>
+                  <span className="text-[10px] text-zinc-400 font-semibold mt-2 tracking-wider uppercase font-sans">
+                    {laps.length} {laps.length === 1 ? 'Lap' : 'Laps'}
+                  </span>
+                </div>
+              )}
+
+              {/* Case 2: Timer Mode Display */}
+              {activeTab === 'timer' && (
+                <>
+                  {/* Alarm sound active pulsing overlay */}
+                  {isAlarmActive && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#ff4500]/5 rounded-full animate-pulse pointer-events-auto">
+                      <span className="text-[11px] tracking-[0.25em] font-black text-[#ff4500] animate-bounce">
+                        TIME'S UP
+                      </span>
+                      <button
+                        onClick={handleResetTimer}
+                        className="mt-4 px-4 py-1.5 bg-[#ff4500] text-white hover:bg-[#e03d00] hover:scale-105 active:scale-95 text-[10px] font-bold tracking-wider uppercase rounded-xl shadow-md cursor-pointer transition-all duration-200"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Rest State: Configuration Input Panel */}
+                  {!isAlarmActive && timeLeft === timerDuration && !isTimerRunning && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 pointer-events-auto mt-1">
+                      <span className="text-[9px] tracking-[0.25em] font-bold text-zinc-400 mb-2 uppercase">
+                        SET COUNTDOWN
+                      </span>
+                      
+                      <div className="flex items-center gap-1.5 font-time">
+                        {/* Hours */}
+                        <div className="flex flex-col items-center">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={timerHours.toString().padStart(2, '0')}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value.replace(/\D/g, '')) || 0;
+                              handleDurationChange(val, timerMinutes, timerSeconds);
+                            }}
+                            onFocus={(e) => e.target.select()}
+                            className="w-11 py-0.5 bg-zinc-50 border border-zinc-200 focus:border-zinc-950 focus:bg-white text-center text-lg md:text-xl font-bold text-zinc-800 rounded-xl outline-none select-all transition-all duration-200"
+                          />
+                          <span className="text-[8px] text-zinc-400 font-bold mt-1 font-sans">HR</span>
+                        </div>
+                        
+                        <span className="text-lg font-bold text-zinc-300 mb-3">:</span>
+                        
+                        {/* Minutes */}
+                        <div className="flex flex-col items-center">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={timerMinutes.toString().padStart(2, '0')}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value.replace(/\D/g, '')) || 0;
+                              handleDurationChange(timerHours, val, timerSeconds);
+                            }}
+                            onFocus={(e) => e.target.select()}
+                            className="w-11 py-0.5 bg-zinc-50 border border-zinc-200 focus:border-zinc-950 focus:bg-white text-center text-lg md:text-xl font-bold text-zinc-800 rounded-xl outline-none select-all transition-all duration-200"
+                          />
+                          <span className="text-[8px] text-zinc-400 font-bold mt-1 font-sans">MIN</span>
+                        </div>
+                        
+                        <span className="text-lg font-bold text-zinc-300 mb-3">:</span>
+                        
+                        {/* Seconds */}
+                        <div className="flex flex-col items-center">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={timerSeconds.toString().padStart(2, '0')}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value.replace(/\D/g, '')) || 0;
+                              handleDurationChange(timerHours, timerMinutes, val);
+                            }}
+                            onFocus={(e) => e.target.select()}
+                            className="w-11 py-0.5 bg-zinc-50 border border-zinc-200 focus:border-zinc-950 focus:bg-white text-center text-lg md:text-xl font-bold text-zinc-800 rounded-xl outline-none select-all transition-all duration-200"
+                          />
+                          <span className="text-[8px] text-zinc-400 font-bold mt-1 font-sans">SEC</span>
+                        </div>
+                      </div>
+
+                      {/* Micro Quick Presets Inline */}
+                      <div className="flex items-center gap-1 mt-3">
+                        <button
+                          onClick={() => handleLoadPreset(60000, '1 Minute')}
+                          className="px-1.5 py-0.5 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/60 rounded text-[8px] font-bold text-zinc-500 hover:text-zinc-800 cursor-pointer transition-all"
+                        >
+                          1m
+                        </button>
+                        <button
+                          onClick={() => handleLoadPreset(300000, '5 Minutes')}
+                          className="px-1.5 py-0.5 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/60 rounded text-[8px] font-bold text-zinc-500 hover:text-zinc-800 cursor-pointer transition-all"
+                        >
+                          5m
+                        </button>
+                        <button
+                          onClick={() => handleLoadPreset(1500000, 'Pomodoro')}
+                          className="px-1.5 py-0.5 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200/60 rounded text-[8px] font-bold text-zinc-500 hover:text-zinc-800 cursor-pointer transition-all"
+                        >
+                          25m
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Running / Active State: Countdown Ticking display */}
+                  {!isAlarmActive && (timeLeft < timerDuration || isTimerRunning) && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-2">
+                      <span className={`text-[10px] tracking-[0.25em] font-bold transition-all duration-300 ${
+                        isTimerRunning ? 'text-[#ff4500] animate-pulse' : 'text-zinc-400'
+                      }`}>
+                        {isTimerRunning ? 'COUNTING' : 'PAUSED'}
+                      </span>
+                      
+                      <div className="flex items-baseline font-time mt-1.5">
+                        {countdownTime.hasHours && (
+                          <>
+                            <span className="text-2xl min-[370px]:text-3xl font-semibold text-zinc-900 leading-none">{countdownTime.hours}</span>
+                            <span className="text-xl min-[370px]:text-2xl font-semibold text-zinc-300 mx-0.5 leading-none">:</span>
+                          </>
+                        )}
+                        <span className="text-3xl min-[370px]:text-4xl sm:text-5xl font-semibold text-zinc-900 leading-none">{countdownTime.minutes}</span>
+                        <span className="text-2xl min-[370px]:text-3xl sm:text-4xl font-semibold text-zinc-300 mx-0.5 leading-none">:</span>
+                        <span className="text-3xl min-[370px]:text-4xl sm:text-5xl font-semibold text-zinc-900 leading-none">{countdownTime.seconds}</span>
+                        <span className="text-xl min-[370px]:text-2xl sm:text-3xl font-semibold text-zinc-300 leading-none">.</span>
+                        <span className="text-xl min-[370px]:text-2xl sm:text-3xl font-bold text-[#ff4500] leading-none">{countdownTime.centiseconds}</span>
+                      </div>
+
+                      <span className="text-[9px] text-zinc-400 font-semibold mt-2 tracking-wider uppercase font-sans">
+                        {Math.ceil((timeLeft / timerDuration) * 100)}% REMAINING
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
-            {/* Premium Button Action Controls */}
+            {/* BUTTON BAR PANEL (Adapts to Stopwatch vs. Timer) */}
             <div className="w-full max-w-sm flex items-center justify-between gap-2 sm:gap-4">
               
-              {/* Reset Button */}
-              <button
-                onClick={handleReset}
-                disabled={time === 0}
-                className={`flex-1 py-3 px-3 sm:px-4 rounded-2xl font-sans text-sm font-semibold flex items-center justify-center gap-1.5 sm:gap-2 border shadow-sm transition-all duration-200 cursor-pointer ${
-                  time > 0
-                    ? 'bg-white hover:bg-zinc-50 border-zinc-200 text-zinc-700 active:scale-95'
-                    : 'bg-zinc-50/50 text-zinc-300 border-zinc-100 cursor-not-allowed'
-                }`}
-              >
-                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                </svg>
-                <span className="hidden sm:inline">Reset</span>
-              </button>
-
-              {/* Start / Pause Button */}
-              <button
-                onClick={handleToggleStartPause}
-                className={`flex-[1.5] py-3 px-4 sm:px-6 rounded-2xl font-sans text-sm font-bold flex items-center justify-center gap-1.5 sm:gap-2.5 transition-all duration-200 shadow-md cursor-pointer hover:shadow-lg active:scale-95 ${
-                  isRunning
-                    ? 'bg-[#ff4500] hover:bg-[#e03d00] text-white hover:shadow-orange-100'
-                    : 'bg-zinc-950 hover:bg-zinc-900 text-white hover:shadow-zinc-200'
-                }`}
-              >
-                {isRunning ? (
-                  <>
-                    <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                      <rect x="6" y="4" width="4" height="16" rx="1" />
-                      <rect x="14" y="4" width="4" height="16" rx="1" />
+              {/* Option A: Stopwatch Tab Actions */}
+              {activeTab === 'stopwatch' && (
+                <>
+                  <button
+                    onClick={handleReset}
+                    disabled={time === 0}
+                    className={`flex-1 py-3 px-3 sm:px-4 rounded-2xl font-sans text-sm font-semibold flex items-center justify-center gap-1.5 sm:gap-2 border shadow-sm transition-all duration-200 cursor-pointer ${
+                      time > 0
+                        ? 'bg-white hover:bg-zinc-50 border-zinc-200 text-zinc-700 active:scale-95'
+                        : 'bg-zinc-50/50 text-zinc-300 border-zinc-100 cursor-not-allowed'
+                    }`}
+                  >
+                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                     </svg>
-                    <span>Pause</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4 fill-white shrink-0" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                    <span>Start</span>
-                  </>
-                )}
-              </button>
+                    <span className="hidden sm:inline">Reset</span>
+                  </button>
 
-              {/* Lap Button */}
-              <button
-                onClick={handleLap}
-                disabled={!isRunning}
-                className={`flex-1 py-3 px-3 sm:px-4 rounded-2xl font-sans text-sm font-semibold flex items-center justify-center gap-1.5 sm:gap-2 border shadow-sm transition-all duration-200 cursor-pointer ${
-                  isRunning
-                    ? 'bg-white hover:bg-zinc-50 border-zinc-200 text-zinc-700 active:scale-95'
-                    : 'bg-zinc-50/50 text-zinc-300 border-zinc-100 cursor-not-allowed'
-                }`}
-              >
-                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-6.005-12.283A48.474 48.474 0 006 4.5H3.5A2.5 2.5 0 001 7v5a2.5 2.5 0 002.5 2.5H3" />
-                </svg>
-                <span className="hidden sm:inline">Lap</span>
-              </button>
+                  <button
+                    onClick={isRunning ? handlePause : handleStart}
+                    className={`flex-[1.5] py-3.5 px-4 sm:px-6 rounded-2xl font-sans text-sm font-bold flex items-center justify-center gap-1.5 sm:gap-2.5 transition-all duration-200 shadow-md cursor-pointer hover:shadow-lg active:scale-95 ${
+                      isRunning
+                        ? 'bg-[#ff4500] hover:bg-[#e03d00] text-white hover:shadow-orange-100'
+                        : 'bg-zinc-950 hover:bg-zinc-900 text-white hover:shadow-zinc-200'
+                    }`}
+                  >
+                    {isRunning ? (
+                      <>
+                        <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                          <rect x="6" y="4" width="4" height="16" rx="1" />
+                          <rect x="14" y="4" width="4" height="16" rx="1" />
+                        </svg>
+                        <span>Pause</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 fill-white shrink-0" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                        <span>Start</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handleLap}
+                    disabled={!isRunning}
+                    className={`flex-1 py-3 px-3 sm:px-4 rounded-2xl font-sans text-sm font-semibold flex items-center justify-center gap-1.5 sm:gap-2 border shadow-sm transition-all duration-200 cursor-pointer ${
+                      isRunning
+                        ? 'bg-white hover:bg-zinc-50 border-zinc-200 text-zinc-700 active:scale-95'
+                        : 'bg-zinc-50/50 text-zinc-300 border-zinc-100 cursor-not-allowed'
+                    }`}
+                  >
+                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v1.5M3 21v-6m0 0l2.77-.693a9 9 0 016.208.682l.108.054a9 9 0 006.086.71l3.114-.732a48.524 48.524 0 01-6.005-12.283A48.474 48.474 0 006 4.5H3.5A2.5 2.5 0 001 7v5a2.5 2.5 0 002.5 2.5H3" />
+                    </svg>
+                    <span className="hidden sm:inline">Lap</span>
+                  </button>
+                </>
+              )}
+
+              {/* Option B: Timer Tab Actions */}
+              {activeTab === 'timer' && (
+                <>
+                  <button
+                    onClick={handleResetTimer}
+                    disabled={timeLeft === timerDuration && !isTimerRunning && !isAlarmActive}
+                    className={`flex-1 py-3 px-3 sm:px-4 rounded-2xl font-sans text-sm font-semibold flex items-center justify-center gap-1.5 sm:gap-2 border shadow-sm transition-all duration-200 cursor-pointer ${
+                      timeLeft < timerDuration || isTimerRunning || isAlarmActive
+                        ? 'bg-white hover:bg-zinc-50 border-zinc-200 text-zinc-700 active:scale-95'
+                        : 'bg-zinc-50/50 text-zinc-300 border-zinc-100 cursor-not-allowed'
+                    }`}
+                  >
+                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    <span className="hidden sm:inline">Cancel</span>
+                  </button>
+
+                  <button
+                    onClick={isTimerRunning ? handlePauseTimer : handleStartTimer}
+                    disabled={timeLeft <= 0 || isAlarmActive}
+                    className={`flex-[1.5] py-3.5 px-4 sm:px-6 rounded-2xl font-sans text-sm font-bold flex items-center justify-center gap-1.5 sm:gap-2.5 transition-all duration-200 shadow-md cursor-pointer hover:shadow-lg active:scale-95 ${
+                      timeLeft <= 0 || isAlarmActive
+                        ? 'bg-zinc-100 text-zinc-300 border-zinc-200/50 cursor-not-allowed shadow-none'
+                        : isTimerRunning
+                        ? 'bg-[#ff4500] hover:bg-[#e03d00] text-white hover:shadow-orange-100'
+                        : 'bg-zinc-950 hover:bg-zinc-900 text-white hover:shadow-zinc-200'
+                    }`}
+                  >
+                    {isTimerRunning ? (
+                      <>
+                        <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                          <rect x="6" y="4" width="4" height="16" rx="1" />
+                          <rect x="14" y="4" width="4" height="16" rx="1" />
+                        </svg>
+                        <span>Pause</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 fill-white shrink-0" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                        <span>Start</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handleResetTimer}
+                    disabled={timeLeft === timerDuration && !isTimerRunning && !isAlarmActive}
+                    className={`flex-1 py-3 px-3 sm:px-4 rounded-2xl font-sans text-sm font-semibold flex items-center justify-center gap-1.5 sm:gap-2 border shadow-sm transition-all duration-200 cursor-pointer ${
+                      timeLeft < timerDuration || isTimerRunning || isAlarmActive
+                        ? 'bg-white hover:bg-zinc-50 border-zinc-200 text-zinc-700 active:scale-95'
+                        : 'bg-zinc-50/50 text-zinc-300 border-zinc-100 cursor-not-allowed'
+                    }`}
+                  >
+                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                    </svg>
+                    <span className="hidden sm:inline">Reset</span>
+                  </button>
+                </>
+              )}
 
             </div>
           </div>
 
-          {/* RIGHT PANEL: Lap lists & statistics */}
+          {/* RIGHT COLUMN: Lap Logs (Stopwatch) OR Presets (Timer) */}
           <div className="lg:col-span-5 flex flex-col bg-zinc-50/40 p-4 sm:p-6 md:p-8 justify-between">
             
-            {/* Laps List Header with Statistics */}
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="font-sans text-xs font-bold uppercase tracking-wider text-zinc-500">
-                  Lap Records
-                </h3>
-                {laps.length > 0 && (
-                  <button
-                    onClick={handleClearAllLaps}
-                    className="text-xs font-semibold text-zinc-400 hover:text-red-500 cursor-pointer transition-colors duration-200 flex items-center gap-1"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                    <span>Clear All</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Stats Bar */}
-              {laps.length >= 2 ? (
-                <div className="grid grid-cols-3 gap-2.5 mb-6">
-                  {/* Fastest lap stat */}
-                  <div className="bg-white/80 border border-zinc-100 rounded-xl p-3 shadow-xs">
-                    <span className="block text-[9px] uppercase tracking-wider font-bold text-emerald-500 mb-1">
-                      Fastest
-                    </span>
-                    <span className="font-time text-xs font-bold text-zinc-800">
-                      {formatLapTime(laps.find(l => l.id === fastestId)?.splitTime || 0)}
-                    </span>
-                  </div>
-                  {/* Slowest lap stat */}
-                  <div className="bg-white/80 border border-zinc-100 rounded-xl p-3 shadow-xs">
-                    <span className="block text-[9px] uppercase tracking-wider font-bold text-rose-500 mb-1">
-                      Slowest
-                    </span>
-                    <span className="font-time text-xs font-bold text-zinc-800">
-                      {formatLapTime(laps.find(l => l.id === slowestId)?.splitTime || 0)}
-                    </span>
-                  </div>
-                  {/* Average split stat */}
-                  <div className="bg-white/80 border border-zinc-100 rounded-xl p-3 shadow-xs">
-                    <span className="block text-[9px] uppercase tracking-wider font-bold text-zinc-400 mb-1">
-                      Average
-                    </span>
-                    <span className="font-time text-xs font-bold text-zinc-800">
-                      {formatLapTime(average)}
-                    </span>
-                  </div>
+            {/* Condition A: Renders Laps list and split analysis */}
+            {activeTab === 'stopwatch' && (
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="font-sans text-xs font-bold uppercase tracking-wider text-zinc-500">
+                    Lap Records
+                  </h3>
+                  {laps.length > 0 && (
+                    <button
+                      onClick={handleClearAllLaps}
+                      className="text-xs font-semibold text-zinc-400 hover:text-red-500 cursor-pointer transition-colors duration-200 flex items-center gap-1"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      <span>Clear All</span>
+                    </button>
+                  )}
                 </div>
-              ) : null}
 
-              {/* Laps List */}
-              {laps.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="w-10 h-10 rounded-full border border-dashed border-zinc-200 flex items-center justify-center text-zinc-300 mb-3">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+                {/* Split statistics */}
+                {laps.length >= 2 ? (
+                  <div className="grid grid-cols-3 gap-2.5 mb-6">
+                    <div className="bg-white/80 border border-zinc-100 rounded-xl p-3 shadow-xs">
+                      <span className="block text-[9px] uppercase tracking-wider font-bold text-emerald-500 mb-1">
+                        Fastest
+                      </span>
+                      <span className="font-time text-xs font-bold text-zinc-800">
+                        {formatLapTime(laps.find(l => l.id === fastestId)?.splitTime || 0)}
+                      </span>
+                    </div>
+                    <div className="bg-white/80 border border-zinc-100 rounded-xl p-3 shadow-xs">
+                      <span className="block text-[9px] uppercase tracking-wider font-bold text-rose-500 mb-1">
+                        Slowest
+                      </span>
+                      <span className="font-time text-xs font-bold text-zinc-800">
+                        {formatLapTime(laps.find(l => l.id === slowestId)?.splitTime || 0)}
+                      </span>
+                    </div>
+                    <div className="bg-white/80 border border-zinc-100 rounded-xl p-3 shadow-xs">
+                      <span className="block text-[9px] uppercase tracking-wider font-bold text-zinc-400 mb-1">
+                        Average
+                      </span>
+                      <span className="font-time text-xs font-bold text-zinc-800">
+                        {formatLapTime(average)}
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-xs font-medium text-zinc-400">No laps recorded yet</p>
-                  <p className="text-[10px] text-zinc-300 mt-1">Press LAP while stopwatch is running</p>
-                </div>
-              ) : (
-                <div className="max-h-[300px] lg:max-h-[350px] overflow-y-auto pr-1 flex flex-col gap-2">
-                  {[...laps].reverse().map((lap) => {
-                    const isFastest = lap.id === fastestId;
-                    const isSlowest = lap.id === slowestId;
+                ) : null}
 
-                    return (
-                      <div
-                        key={lap.id}
-                        className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all duration-300 bg-white group ${
-                          isFastest
-                            ? 'border-emerald-100 bg-emerald-50/15'
-                            : isSlowest
-                            ? 'border-rose-100 bg-rose-50/15'
-                            : 'border-zinc-100 hover:border-zinc-200'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          {/* Lap sequence index number */}
-                          <span className="font-sans text-xs font-bold text-zinc-400">
-                            #{lap.id.toString().padStart(2, '0')}
-                          </span>
+                {/* Lap Records feed */}
+                {laps.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="w-10 h-10 rounded-full border border-dashed border-zinc-200 flex items-center justify-center text-zinc-300 mb-3">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <p className="text-xs font-medium text-zinc-400">No laps recorded yet</p>
+                    <p className="text-[10px] text-zinc-300 mt-1">Press LAP while stopwatch is running</p>
+                  </div>
+                ) : (
+                  <div className="max-h-[300px] lg:max-h-[350px] overflow-y-auto pr-1 flex flex-col gap-2">
+                    {[...laps].reverse().map((lap) => {
+                      const isFastest = lap.id === fastestId;
+                      const isSlowest = lap.id === slowestId;
 
-                          <div className="flex flex-col">
-                            {/* Lap split duration */}
-                            <span className="font-time text-sm font-semibold text-zinc-800 leading-tight">
-                              {formatLapTime(lap.splitTime)}
+                      return (
+                        <div
+                          key={lap.id}
+                          className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all duration-300 bg-white group ${
+                            isFastest
+                              ? 'border-emerald-100 bg-emerald-50/15'
+                              : isSlowest
+                              ? 'border-rose-100 bg-rose-50/15'
+                              : 'border-zinc-100 hover:border-zinc-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="font-sans text-xs font-bold text-zinc-400">
+                              #{lap.id.toString().padStart(2, '0')}
                             </span>
-                            {/* Cumulative overall time */}
-                            <span className="font-time text-[10px] font-medium text-zinc-400">
-                              Cum. {formatLapTime(lap.lapTime)}
-                            </span>
+
+                            <div className="flex flex-col">
+                              <span className="font-time text-sm font-semibold text-zinc-800 leading-tight">
+                                {formatLapTime(lap.splitTime)}
+                              </span>
+                              <span className="font-time text-[10px] font-medium text-zinc-400">
+                                Cum. {formatLapTime(lap.lapTime)}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {isFastest && (
+                              <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center gap-0.5">
+                                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                                </svg>
+                                <span>FASTEST</span>
+                              </span>
+                            )}
+                            {isSlowest && (
+                              <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-rose-50 border border-rose-100 text-rose-600 flex items-center gap-0.5">
+                                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <span>SLOWEST</span>
+                              </span>
+                            )}
+
+                            <button
+                              onClick={() => handleDeleteLap(lap.id)}
+                              className="p-1.5 rounded-lg text-zinc-300 hover:text-red-500 hover:bg-red-50 transition-all duration-200 cursor-pointer lg:opacity-0 lg:group-hover:opacity-100"
+                              title="Delete Lap"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
                           </div>
                         </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
-                        <div className="flex items-center gap-2">
-                          {/* Beautiful dynamic badge pill for Fastest / Slowest */}
-                          {isFastest && (
-                            <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center gap-0.5">
-                              <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                              </svg>
-                              <span>FASTEST</span>
-                            </span>
-                          )}
-                          {isSlowest && (
-                            <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-rose-50 border border-rose-100 text-rose-600 flex items-center gap-0.5">
-                              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              <span>SLOWEST</span>
-                            </span>
-                          )}
+            {/* Condition B: Renders Presets selector dashboard */}
+            {activeTab === 'timer' && (
+              <div>
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="font-sans text-xs font-bold uppercase tracking-wider text-zinc-500">
+                    Productivity Presets
+                  </h3>
+                  <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-500 text-[8px] font-bold tracking-wide uppercase">
+                    One-Tap Load
+                  </span>
+                </div>
 
-                          {/* Delete individual lap action */}
-                          <button
-                            onClick={() => handleDeleteLap(lap.id)}
-                            className="p-1.5 rounded-lg text-zinc-300 hover:text-red-500 hover:bg-red-50 transition-all duration-200 cursor-pointer lg:opacity-0 lg:group-hover:opacity-100"
-                            title="Delete Lap"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
+                {/* Preset Options grid feed */}
+                <div className="max-h-[350px] overflow-y-auto pr-1 flex flex-col gap-2.5">
+                  {timerPresets.map((preset, index) => {
+                    const isSelected = timerDuration === preset.duration;
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => handleLoadPreset(preset.duration, preset.name)}
+                        className={`w-full text-left p-3.5 rounded-2xl border transition-all duration-200 bg-white shadow-xs cursor-pointer flex flex-col gap-1 ${
+                          isSelected
+                            ? 'border-[#ff4500] ring-1 ring-[#ff4500]/20 bg-orange-50/5'
+                            : 'border-zinc-100 hover:border-zinc-200 hover:scale-[1.01]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="font-sans text-xs font-bold text-zinc-800">
+                            {preset.name}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[8px] font-extrabold ${
+                            isSelected 
+                              ? 'bg-[#ff4500]/10 text-[#ff4500]'
+                              : 'bg-zinc-100 text-zinc-500'
+                          }`}>
+                            {preset.tag}
+                          </span>
                         </div>
-                      </div>
+                        
+                        <p className="text-[10px] text-zinc-400">
+                          {preset.description}
+                        </p>
+                        
+                        <span className="font-time text-xs font-bold text-zinc-600 mt-1">
+                          {formatLapTime(preset.duration).split('.')[0]} {/* show just HH:MM:SS */}
+                        </span>
+                      </button>
                     );
                   })}
                 </div>
-              )}
-            </div>
-
-            {/* Decorative Quote or Minimalistic Subtitle at Bottom */}
-            {laps.length > 0 && (
-              <div className="mt-6 border-t border-zinc-100 pt-4 text-center">
-                <span className="text-[10px] italic font-medium text-zinc-400">
-                  Precision is the soul of performance.
-                </span>
               </div>
             )}
+
+            {/* Decorative Quote bottom banner */}
+            <div className="mt-6 border-t border-zinc-100 pt-4 text-center">
+              <span className="text-[10px] italic font-medium text-zinc-400">
+                {activeTab === 'stopwatch' 
+                  ? 'Precision is the soul of performance.'
+                  : 'Time is what we want most, but use worst.'
+                }
+              </span>
+            </div>
 
           </div>
 
